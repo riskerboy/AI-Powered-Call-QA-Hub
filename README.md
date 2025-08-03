@@ -1,9 +1,11 @@
 # Call Center QA Agent
 
+<img width="1279" height="660" alt="image" src="https://github.com/user-attachments/assets/4b1b7ab4-0abb-46eb-8a4c-c4f3df033b5e" />
 A comprehensive web-based application for automated quality assurance evaluation of call center recordings. This tool helps call center managers and QA teams efficiently review and assess agent performance through AI-powered transcription and evaluation.
 
 ## 🎯 Purpose
 
+<img width="1279" height="660" alt="image" src="https://github.com/user-attachments/assets/6702a437-129b-437a-b15e-e552de8ceefb" />
 The Call Center QA Agent is designed to streamline the quality assurance process for call centers, particularly those handling Final Expense campaigns. It automates the transcription of call recordings and provides AI-powered evaluations based on established QA criteria.
 
 ## ✨ Features
@@ -14,6 +16,8 @@ The Call Center QA Agent is designed to streamline the quality assurance process
 - **User Management**: Secure login and registration system with user-specific data storage
 - **Dashboard Analytics**: Real-time performance metrics and employee analytics
 - **Excel Integration**: Import/export call data via Excel files
+<img width="1279" height="660" alt="image" src="https://github.com/user-attachments/assets/7c9069f7-6b5d-4fd7-9d7e-efa97b461c77" />
+<img width="1279" height="660" alt="image" src="https://github.com/user-attachments/assets/67ac00dd-fcdc-4af4-baed-f87abdfe4bbb" />
 
 ### QA Evaluation Criteria
 The system evaluates calls based on 12 key criteria:
