@@ -1,0 +1,1255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Call Center QA Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossOrigin="anonymous" src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossOrigin="anonymous" src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Inter', sans-serif;
+    }
+    
+    body, html {
+      height: 100%;
+      font-size: 16px;
+    }
+    
+    .spline-container {
+      position: fixed;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+    }
+    
+    .content-container {
+      position: relative;
+      z-index: 10;
+      min-height: 100vh;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+      letter-spacing: -0.02em;
+      font-weight: 600;
+    }
+
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in {
+      animation: fade-in 0.3s ease-out forwards;
+    }
+  </style>
+</head>
+<body class="bg-black text-white">
+  <!-- Spline Background -->
+  <div class="spline-container">
+    <iframe src='https://my.spline.design/iphone15procopy-pmwnMexXbAOzhjJgYVtuY6kv/' frameborder='0' width='100%' height='100%'></iframe>
+  </div>
+
+  <!-- Content Overlay -->
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    // --- User Data Management Functions ---
+    const initializeUserData = (username) => {
+      const userData = {
+        reviews: [],
+        employees: {},
+        recordedCalls: 0,
+        targetCalls: 100,
+        tokens: 0,
+        requests: 0,
+        lastUpdated: new Date().toISOString()
+      };
+      localStorage.setItem(`userData_${username}`, JSON.stringify(userData));
+      return userData;
+    };
+
+    const getUserData = (username) => {
+      const storedData = localStorage.getItem(`userData_${username}`);
+      if (!storedData) {
+        return initializeUserData(username);
+      }
+      return JSON.parse(storedData);
+    };
+
+    const updateUserData = (username, newData) => {
+      const updatedData = {
+        ...newData,
+        lastUpdated: new Date().toISOString()
+      };
+      localStorage.setItem(`userData_${username}`, JSON.stringify(updatedData));
+      return updatedData;
+    };
+
+    const addReview = (username, review) => {
+      const userData = getUserData(username);
+      const timestamp = new Date().toISOString();
+      const newReview = { ...review, timestamp };
+      
+      // Update reviews array
+      userData.reviews.push(newReview);
+      
+      // Update employee data
+      const agentName = review.agentName || 'Unknown Agent';
+      if (!userData.employees[agentName]) {
+        userData.employees[agentName] = {
+          name: agentName,
+          totalCalls: 0,
+          approvedCalls: 0,
+          reviews: []
+        };
+      }
+      
+      userData.employees[agentName].totalCalls++;
+      if (review.review.toLowerCase().includes('approved') || 
+          review.review.toLowerCase().includes('pass')) {
+        userData.employees[agentName].approvedCalls++;
+      }
+      userData.employees[agentName].reviews.push(newReview);
+      
+      // Update metrics
+      userData.recordedCalls++;
+      userData.tokens += 100; // Approximate tokens used per review
+      userData.requests += 2; // Approximate API calls per review
+      
+      return updateUserData(username, userData);
+    };
+
+    const calculatePerformanceMetrics = (userData) => {
+      const employees = Object.values(userData.employees);
+      return employees.map(emp => {
+        const totalCalls = emp.totalCalls;
+        const approvedCalls = emp.approvedCalls;
+        const successRate = totalCalls > 0 ? (approvedCalls / totalCalls) * 100 : 0;
+        
+        // Calculate rating based on success rate and review quality
+        const rating = Math.min(5, (successRate / 20) + 3); // Base rating of 3, max 5
+        
+        // Analyze reviews for improvement tips
+        const improvementTips = analyzeReviewsForImprovements(emp.reviews);
+        
+        return {
+          name: emp.name,
+          totalCalls,
+          approvedCalls,
+          successRate,
+          rating,
+          improvementTips,
+          reviews: emp.reviews
+        };
+      }).sort((a, b) => b.rating - a.rating);
+    };
+
+    const analyzeReviewsForImprovements = (reviews) => {
+      const issues = {
+        script_adherence: 0,
+        tone_and_etiquette: 0,
+        information_accuracy: 0,
+        call_handling: 0,
+        compliance: 0
+      };
+      
+      reviews.forEach(review => {
+        const reviewText = review.review.toLowerCase();
+        
+        if (reviewText.includes('script') || reviewText.includes('procedure')) {
+          issues.script_adherence++;
+        }
+        if (reviewText.includes('tone') || reviewText.includes('attitude') || reviewText.includes('etiquette')) {
+          issues.tone_and_etiquette++;
+        }
+        if (reviewText.includes('information') || reviewText.includes('accuracy') || reviewText.includes('correct')) {
+          issues.information_accuracy++;
+        }
+        if (reviewText.includes('handling') || reviewText.includes('management') || reviewText.includes('process')) {
+          issues.call_handling++;
+        }
+        if (reviewText.includes('compliance') || reviewText.includes('policy') || reviewText.includes('regulation')) {
+          issues.compliance++;
+        }
+      });
+      
+      const totalReviews = reviews.length;
+      const tips = [];
+      
+      Object.entries(issues).forEach(([issue, count]) => {
+        const percentage = (count / totalReviews) * 100;
+        if (percentage > 20) { // Only include issues that appear in more than 20% of reviews
+          tips.push({
+            issue,
+            percentage: Math.round(percentage),
+            tip: getImprovementTip(issue)
+          });
+        }
+      });
+      
+      return tips;
+    };
+
+    const getImprovementTip = (issue) => {
+      const tips = {
+        script_adherence: "Focus on following the call script more closely. Ensure all required points are covered in the correct order.",
+        tone_and_etiquette: "Work on maintaining a professional and friendly tone throughout the call. Practice active listening and empathy.",
+        information_accuracy: "Double-check all information provided to customers. Verify details before making commitments.",
+        call_handling: "Improve call flow management. Better handle objections and maintain control of the conversation.",
+        compliance: "Review compliance guidelines thoroughly. Ensure all regulatory requirements are met during calls."
+      };
+      return tips[issue] || "Focus on improving overall call quality and customer satisfaction.";
+    };
+
+    // --- Local Storage Helper Functions ---
+    const setLocalStorageItem = (key, value) => {
+      try {
+        localStorage.setItem(key, JSON.stringify(value));
+      } catch (error) {
+        console.error('Error saving to localStorage:', error);
+      }
+    };
+
+    const getLocalStorageItem = (key) => {
+      try {
+        const item = localStorage.getItem(key);
+        return item ? JSON.parse(item) : null;
+      } catch (error) {
+        console.error('Error reading from localStorage:', error);
+        return null;
+      }
+    };
+
+    // --- Login Component ---
+    function LoginScreen({ onLogin }) {
+      const [username, setUsername] = useState('');
+      const [password, setPassword] = useState('');
+      const [error, setError] = useState('');
+      const [isRegistering, setIsRegistering] = useState(false);
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+
+        try {
+          const response = await fetch(`/api/${isRegistering ? 'register' : 'login'}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+          });
+
+          const data = await response.json();
+
+          if (data.success) {
+            if (isRegistering) {
+              initializeUserData(username);
+            }
+            setLocalStorageItem('currentUser', username);
+            onLogin(username);
+          } else {
+            setError(data.message || 'Authentication failed');
+          }
+        } catch (error) {
+          setError('An error occurred. Please try again.');
+          console.error('Auth error:', error);
+        }
+      };
+
+      return (
+        <div className="content-container">
+          <nav className="container mx-auto px-6 py-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <svg className="h-8 w-8 text-blue-400" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"></path>
+                </svg>
+                <span className="ml-3 text-xl tracking-tight">Call Center QA</span>
+              </div>
+            </div>
+          </nav>
+
+          <div className="container mx-auto px-6 pt-16 md:pt-24">
+            <div className="flex flex-col items-center text-center max-w-3xl mx-auto">
+              <h1 className="text-5xl md:text-6xl lg:text-7xl font-semibold tracking-tight mb-6 leading-tight">
+                <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">Streamline</span> your call center QA
+              </h1>
+              <p className="text-gray-300 text-lg md:text-xl mb-8 max-w-2xl font-normal">
+                Experience clarity in every interaction with our intuitive platform designed for modern call centers.
+              </p>
+
+              <div className="w-full max-w-md bg-white/5 backdrop-blur-sm p-8 rounded-xl">
+                <h2 className="text-2xl font-semibold mb-6 text-center">
+                  {isRegistering ? 'Create Account' : 'Welcome Back'}
+                </h2>
+                {error && <p className="text-red-400 text-center mb-6 text-sm">{error}</p>}
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  <div>
+                    <label htmlFor="username" className="block text-gray-300 text-sm font-medium mb-2">
+                      Username
+                    </label>
+                    <input
+                      type="text"
+                      id="username"
+                      className="w-full bg-white/5 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="password" className="block text-gray-300 text-sm font-medium mb-2">
+                      Password
+                    </label>
+                    <input
+                      type="password"
+                      id="password"
+                      className="w-full bg-white/5 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="w-full bg-gradient-to-r from-blue-500 to-purple-500 text-white font-medium rounded-lg px-6 py-3 hover:opacity-90 transition-opacity"
+                  >
+                    {isRegistering ? 'Create Account' : 'Sign In'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsRegistering(!isRegistering)}
+                    className="w-full text-gray-300 hover:text-white text-sm font-medium transition-colors"
+                  >
+                    {isRegistering ? 'Already have an account? Sign in' : 'Need an account? Register'}
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // --- Dashboard Component ---
+    function DashboardComponent({ currentUser, onLogout, userData, currentView, setCurrentView }) {
+      const [selectedEmployee, setSelectedEmployee] = useState(null);
+      const [showReviewModal, setShowReviewModal] = useState(false);
+      const [expandedSections, setExpandedSections] = useState({
+        usage: true,
+        performance: true,
+        employees: true
+      });
+
+      const employeeMetrics = useMemo(() => calculatePerformanceMetrics(userData), [userData]);
+
+      // Toggle section expansion
+      const toggleSection = (section) => {
+        setExpandedSections(prev => ({
+          ...prev,
+          [section]: !prev[section]
+        }));
+      };
+
+      const usageChartRef = React.useRef(null);
+      const performanceChartRef = React.useRef(null);
+
+      useEffect(() => {
+        // Destroy existing charts before re-rendering
+        if (usageChartRef.current) {
+          usageChartRef.current.destroy();
+        }
+        if (performanceChartRef.current) {
+          performanceChartRef.current.destroy();
+        }
+
+        const usageChartCtx = document.getElementById('usageChart');
+        const performanceChartCtx = document.getElementById('performanceChart');
+
+        if (usageChartCtx) {
+          usageChartRef.current = new Chart(usageChartCtx, {
+            type: 'line',
+            data: {
+              labels: Array.from({ length: 30 }, (_, i) => {
+                const date = new Date();
+                date.setDate(date.getDate() - i);
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+              }).reverse(),
+              datasets: [{
+                label: 'Calls',
+                data: Array(30).fill(0).map(() => Math.floor(Math.random() * 10)), // Placeholder data
+                borderColor: '#8B5CF6',
+                backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                tension: 0.4,
+                fill: true
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                tooltip: { mode: 'index', intersect: false }
+              },
+              scales: {
+                y: {
+                  beginAtZero: true,
+                  grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                  ticks: { color: '#9CA3AF' }
+                },
+                x: {
+                  grid: { display: false },
+                  ticks: { color: '#9CA3AF', maxRotation: 45, minRotation: 45 }
+                }
+              }
+            }
+          });
+        }
+        if (performanceChartCtx) {
+          performanceChartRef.current = new Chart(performanceChartCtx, {
+            type: 'doughnut',
+            data: {
+              labels: ['Approved', 'Rejected'],
+              datasets: [{
+                data: [userData.recordedCalls * 0.8, userData.recordedCalls * 0.2],
+                backgroundColor: ['#10B981', '#EF4444'],
+                borderWidth: 0
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  position: 'bottom',
+                  labels: { color: '#9CA3AF' }
+                }
+              },
+              cutout: '70%'
+            }
+          });
+        }
+      }, [userData]);
+
+      return (
+        <div className="content-container">
+          <nav className="container mx-auto px-6 py-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <svg className="h-8 w-8 text-blue-400" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"></path>
+                </svg>
+                <span className="ml-3 text-xl tracking-tight">Call Center QA</span>
+              </div>
+              <div className="flex items-center space-x-6">
+                <button 
+                  onClick={() => setCurrentView('dashboard')}
+                  className={`px-5 py-2 rounded-lg transition-colors duration-300 font-medium ${
+                    currentView === 'dashboard' ? 'bg-blue-500 text-white' : 'text-gray-300 hover:text-white'
+                  }`}
+                >
+                  Dashboard
+                </button>
+                <button 
+                  onClick={() => setCurrentView('table')}
+                  className={`px-5 py-2 rounded-lg transition-colors duration-300 font-medium ${
+                    currentView === 'table' ? 'bg-blue-500 text-white' : 'text-gray-300 hover:text-white'
+                  }`}
+                >
+                  Call Records
+                </button>
+                <button 
+                  onClick={onLogout}
+                  className="px-5 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors duration-300"
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+          </nav>
+
+          <div className="container mx-auto px-6 py-8">
+            {/* Stats Overview */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+              <div className="bg-white/5 backdrop-blur-sm p-6 rounded-xl">
+                <p className="text-4xl font-semibold mb-1 tracking-tight">{userData.recordedCalls}</p>
+                <p className="text-gray-400 text-base">Total Calls</p>
+              </div>
+              <div className="bg-white/5 backdrop-blur-sm p-6 rounded-xl">
+                <p className="text-4xl font-semibold mb-1 tracking-tight">
+                  {Object.values(userData.employees).reduce((sum, emp) => sum + emp.approvedCalls, 0)}
+                </p>
+                <p className="text-gray-400 text-base">Approved Calls</p>
+              </div>
+              <div className="bg-white/5 backdrop-blur-sm p-6 rounded-xl">
+                <p className="text-4xl font-semibold mb-1 tracking-tight">{userData.tokens.toLocaleString()}</p>
+                <p className="text-gray-400 text-base">Tokens Used</p>
+              </div>
+              <div className="bg-white/5 backdrop-blur-sm p-6 rounded-xl">
+                <p className="text-4xl font-semibold mb-1 tracking-tight">{userData.requests}</p>
+                <p className="text-gray-400 text-base">API Requests</p>
+              </div>
+            </div>
+
+            {/* Performance Metrics */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+              <div className="bg-white/5 backdrop-blur-sm p-6 rounded-xl">
+                <h3 className="text-xl font-semibold mb-4">Call Performance</h3>
+                <div className="h-72">
+                  <canvas id="performanceChart"></canvas>
+                </div>
+              </div>
+              <div className="bg-white/5 backdrop-blur-sm p-6 rounded-xl">
+                <h3 className="text-xl font-semibold mb-4">Call Volume</h3>
+                <div className="h-72">
+                  <canvas id="usageChart"></canvas>
+                </div>
+              </div>
+            </div>
+
+            {/* Employee Rankings */}
+            <div className="bg-white/5 backdrop-blur-sm p-6 rounded-xl">
+              <h3 className="text-xl font-semibold mb-6">Employee Performance</h3>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-800">
+                  <thead>
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Name</th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Total Calls</th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Approved</th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Success Rate</th>
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Rating</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {employeeMetrics.map((employee) => (
+                      <tr 
+                        key={employee.name}
+                        className="hover:bg-white/5 transition-colors duration-200 cursor-pointer"
+                        onClick={() => setSelectedEmployee(employee)}
+                      >
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
+                          {employee.name}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{employee.totalCalls}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{employee.approvedCalls}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{employee.successRate.toFixed(1)}%</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{employee.rating.toFixed(1)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* Employee Details Modal */}
+          {selectedEmployee && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+              <div className="bg-white/5 backdrop-blur-sm rounded-xl max-w-2xl w-full p-8 border border-gray-800">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-2xl font-semibold">{selectedEmployee.name}</h3>
+                  <button
+                    onClick={() => setSelectedEmployee(null)}
+                    className="text-gray-400 hover:text-white transition-colors"
+                  >
+                    <span className="material-symbols-outlined">close</span>
+                  </button>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-6 mb-6">
+                  <div>
+                    <p className="text-gray-400 text-sm mb-1">Overall Rating</p>
+                    <p className="text-3xl font-semibold">{selectedEmployee.rating.toFixed(1)}/5</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400 text-sm mb-1">Success Rate</p>
+                    <p className="text-3xl font-semibold">{selectedEmployee.successRate.toFixed(1)}%</p>
+                  </div>
+                </div>
+
+                {selectedEmployee.improvementTips.length > 0 && (
+                  <div>
+                    <h4 className="text-lg font-semibold mb-4">Improvement Areas</h4>
+                    <div className="space-y-4">
+                      {selectedEmployee.improvementTips.map((tip, index) => (
+                        <div key={index} className="bg-white/5 rounded-lg p-4">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-white capitalize">{tip.issue.replace(/_/g, ' ')}</span>
+                            <span className="text-red-400 text-sm">{tip.percentage}%</span>
+                          </div>
+                          <p className="text-gray-400 text-sm">{tip.tip}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // --- Table Component ---
+    function TableComponent({ currentUser, onLogout, onReviewAdded, onDataImported, currentView, setCurrentView }) {
+      const [data, setData] = useState(() => {
+        const userData = getUserData(currentUser);
+        return userData.reviews.length > 0 ? userData.reviews : [
+          { name: "Your Agent Name", campaign: "Final Expense", serial: "CALL-001", date: new Date().toISOString().split('T')[0], recording: "", transcription: "", review: "", agentName: "" }
+        ];
+      });
+      const [historyData, setHistoryData] = useState(() => {
+        const userData = getUserData(currentUser);
+        return userData.history || [];
+      });
+      const [activeTab, setActiveTab] = useState('current'); // 'current' or 'history'
+      const [expandedRows, setExpandedRows] = useState({});
+      const [loadingRows, setLoadingRows] = useState({});
+      const [isReviewingAll, setIsReviewingAll] = useState(false);
+      const [searchTerm, setSearchTerm] = useState('');
+      const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+
+      // Save current data to history
+      const saveToHistory = () => {
+        if (data.length > 0 && data.some(row => row.transcription || row.review)) {
+          const historyEntry = {
+            id: Date.now(),
+            timestamp: new Date().toISOString(),
+            data: [...data],
+            name: `Review Set ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`
+          };
+          
+          const newHistory = [historyEntry, ...historyData];
+          setHistoryData(newHistory);
+          
+          // Update user data in localStorage
+          const userData = getUserData(currentUser);
+          userData.history = newHistory;
+          userData.reviews = []; // Clear reviews in localStorage
+          updateUserData(currentUser, userData);
+          
+          // Clear current data in component state
+          setData([{
+            name: "Your Agent Name",
+            campaign: "Final Expense",
+            serial: "CALL-001",
+            date: new Date().toISOString().split('T')[0],
+            recording: "",
+            transcription: "",
+            review: "",
+            agentName: ""
+          }]);
+        }
+      };
+
+      // Load history entry
+      const loadHistoryEntry = (historyEntry) => {
+        setData(historyEntry.data);
+        setActiveTab('current');
+      };
+
+      // Delete history entry
+      const deleteHistoryEntry = (historyId) => {
+        if (window.confirm('Are you sure you want to delete this history entry?')) {
+          const newHistory = historyData.filter(entry => entry.id !== historyId);
+          setHistoryData(newHistory);
+          
+          // Update user data in localStorage
+          const userData = getUserData(currentUser);
+          userData.history = newHistory;
+          updateUserData(currentUser, userData);
+        }
+      };
+
+      // Filter data based on search term
+      const filteredData = useMemo(() => {
+        return data.filter(row => 
+          Object.values(row).some(value => 
+            String(value).toLowerCase().includes(searchTerm.toLowerCase())
+          )
+        );
+      }, [data, searchTerm]);
+
+      // Sort data
+      const sortedData = useMemo(() => {
+        if (!sortConfig.key) return filteredData;
+        
+        return [...filteredData].sort((a, b) => {
+          if (a[sortConfig.key] < b[sortConfig.key]) {
+            return sortConfig.direction === 'asc' ? -1 : 1;
+          }
+          if (a[sortConfig.key] > b[sortConfig.key]) {
+            return sortConfig.direction === 'asc' ? 1 : -1;
+          }
+          return 0;
+        });
+      }, [filteredData, sortConfig]);
+
+      const requestSort = (key) => {
+        setSortConfig(current => ({
+          key,
+          direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
+        }));
+      };
+
+      const handleCellChange = (rowIndex, field, value) => {
+        const newData = [...data];
+        newData[rowIndex][field] = value;
+        setData(newData);
+      };
+
+      const handleFileUpload = (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const workbook = XLSX.read(e.target.result, { type: 'binary' });
+            const sheetName = workbook.SheetNames[0];
+            const excelData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+
+            const formattedData = excelData.map(row => ({
+              name: row["Name"] || "",
+              campaign: row["Campaign"] || "",
+              serial: row["Serial Number"] ? String(row["Serial Number"]) : "",
+              date: row["Date"] ? new Date(row["Date"]).toISOString().split('T')[0] : "",
+              recording: row["Recording Link"] || "",
+              transcription: row["Transcription"] || "",
+              review: row["Review"] || "",
+              agentName: row["Name"] || ""
+            }));
+            setData(formattedData);
+            onDataImported(currentUser, formattedData);
+          } catch (error) {
+            console.error("Error reading Excel file:", error);
+            alert("Error reading Excel file. Please ensure it's a valid .xlsx file and has the correct columns.");
+          }
+        };
+        reader.readAsBinaryString(file);
+      };
+
+      const handleExport = () => {
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Call Center QA Results");
+        XLSX.writeFile(wb, "call_center_qa_results.xlsx");
+      };
+
+      const handleReview = async (rowIndex) => {
+        const rowToReview = data[rowIndex];
+        if (!rowToReview.recording) {
+          alert("Please provide a Recording Link for the call to be reviewed.");
+          return;
+        }
+        if (!rowToReview.name) {
+          alert("Please provide a Customer Name for the call to be reviewed.");
+          return;
+        }
+
+        setLoadingRows(prev => ({ ...prev, [rowIndex]: true }));
+
+        try {
+          const response = await fetch('/api/review', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify([{
+              recording: rowToReview.recording,
+              name: rowToReview.name,
+              transcription: rowToReview.transcription || "",
+              review: rowToReview.review || "",
+              agentName: rowToReview.name
+            }]),
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const result = await response.json();
+          const updatedRow = result[0];
+
+          const newData = [...data];
+          newData[rowIndex] = {
+            ...newData[rowIndex],
+            transcription: updatedRow.transcription,
+            review: updatedRow.review,
+            agentName: rowToReview.name
+          };
+          setData(newData);
+          onReviewAdded(currentUser, {
+            agentName: rowToReview.name,
+            review: updatedRow.review,
+            transcription: updatedRow.transcription
+          });
+
+        } catch (error) {
+          console.error("Error reviewing call:", error);
+          alert(`Failed to review call: ${error.message || 'Unknown error'}`);
+        } finally {
+          setLoadingRows(prev => ({ ...prev, [rowIndex]: false }));
+        }
+      };
+
+      const handleDelete = (rowIndex) => {
+        if (window.confirm('Are you sure you want to delete this record?')) {
+          const newData = [...data];
+          newData.splice(rowIndex, 1);
+          setData(newData);
+          // Update user data in localStorage
+          const userData = getUserData(currentUser);
+          userData.reviews = newData;
+          updateUserData(currentUser, userData);
+        }
+      };
+
+      const handleReviewAll = async () => {
+        setIsReviewingAll(true);
+        const rowsToReview = data.filter(row => !row.transcription || !row.review);
+        
+        for (let i = 0; i < rowsToReview.length; i++) {
+          const rowIndex = data.findIndex(row => 
+            row.recording === rowsToReview[i].recording && 
+            row.name === rowsToReview[i].name
+          );
+          
+          if (rowIndex !== -1) {
+            setLoadingRows(prev => ({ ...prev, [rowIndex]: true }));
+            try {
+              const response = await fetch('/api/review', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify([{
+                  recording: data[rowIndex].recording,
+                  name: data[rowIndex].name,
+                  transcription: data[rowIndex].transcription || "",
+                  review: data[rowIndex].review || "",
+                  agentName: data[rowIndex].name
+                }]),
+              });
+
+              if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+              }
+
+              const result = await response.json();
+              const updatedRow = result[0];
+
+              const newData = [...data];
+              newData[rowIndex] = {
+                ...newData[rowIndex],
+                transcription: updatedRow.transcription,
+                review: updatedRow.review,
+                agentName: data[rowIndex].name
+              };
+              setData(newData);
+              onReviewAdded(currentUser, {
+                agentName: data[rowIndex].name,
+                review: updatedRow.review,
+                transcription: updatedRow.transcription
+              });
+
+            } catch (error) {
+              console.error("Error reviewing call:", error);
+              alert(`Failed to review call: ${error.message || 'Unknown error'}`);
+            } finally {
+              setLoadingRows(prev => ({ ...prev, [rowIndex]: false }));
+            }
+          }
+        }
+        setIsReviewingAll(false);
+      };
+
+      const toggleExpand = (rowIndex) => {
+        setExpandedRows(prev => ({
+          ...prev,
+          [rowIndex]: !prev[rowIndex]
+        }));
+      };
+
+      return (
+        <div className="content-container">
+          <nav className="container mx-auto px-6 py-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <svg className="h-8 w-8 text-blue-400" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"></path>
+                </svg>
+                <span className="ml-3 text-xl tracking-tight">Call Center QA</span>
+              </div>
+              <div className="flex items-center space-x-6">
+                <button 
+                  onClick={() => setCurrentView('dashboard')}
+                  className="px-5 py-2 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors duration-300"
+                >
+                  <span className="material-symbols-outlined mr-2">dashboard</span>
+                  Dashboard
+                </button>
+                <button 
+                  onClick={onLogout}
+                  className="px-5 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors duration-300"
+                >
+                  <span className="material-symbols-outlined mr-2">logout</span>
+                  Logout
+                </button>
+              </div>
+            </div>
+          </nav>
+
+          <div className="container mx-auto px-6 py-8">
+            <div className="bg-white/5 backdrop-blur-sm rounded-xl overflow-hidden">
+              <div className="border-b border-gray-800">
+                <div className="flex">
+                  <button
+                    onClick={() => setActiveTab('current')}
+                    className={`px-6 py-4 text-sm font-medium transition-colors duration-200 ${
+                      activeTab === 'current'
+                        ? 'text-blue-400 border-b-2 border-blue-400'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    Current Reviews
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('history')}
+                    className={`px-6 py-4 text-sm font-medium transition-colors duration-200 ${
+                      activeTab === 'history'
+                        ? 'text-blue-400 border-b-2 border-blue-400'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    Review History
+                  </button>
+                </div>
+              </div>
+
+              {activeTab === 'current' ? (
+                <>
+                  <div className="p-6 flex flex-wrap gap-4 items-center justify-between border-b border-gray-800">
+                    <div className="flex items-center space-x-4">
+                      <input
+                        type="file"
+                        accept=".xlsx, .xls"
+                        onChange={handleFileUpload}
+                        className="block text-sm text-gray-300
+                                   file:mr-4 file:py-3 file:px-6
+                                   file:rounded-lg file:border-0
+                                   file:text-base file:font-semibold
+                                   file:bg-blue-500 file:text-white
+                                   hover:file:bg-blue-600 transition-colors duration-300
+                                   cursor-pointer"
+                      />
+                      <button
+                        onClick={handleExport}
+                        className="px-8 py-3 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-colors duration-300"
+                      >
+                        <span className="material-symbols-outlined mr-2">download</span>
+                        Export to Excel
+                      </button>
+                      <button
+                        onClick={handleReviewAll}
+                        disabled={isReviewingAll}
+                        className="px-8 py-3 bg-purple-500/20 text-purple-400 rounded-lg hover:bg-purple-500/30 transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <span className="material-symbols-outlined mr-2">
+                          {isReviewingAll ? 'sync' : 'auto_awesome'}
+                        </span>
+                        {isReviewingAll ? 'Reviewing...' : 'Review All'}
+                      </button>
+                      <button
+                        onClick={saveToHistory}
+                        className="px-8 py-3 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors duration-300"
+                      >
+                        <span className="material-symbols-outlined mr-2">save</span>
+                        Save to History
+                      </button>
+                    </div>
+                    <div className="flex-1 max-w-md">
+                      <input
+                        type="text"
+                        placeholder="Search records..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full bg-white/5 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-800">
+                      <thead className="bg-gray-800">
+                        <tr>
+                          {['name', 'campaign', 'serial', 'date', 'recording', 'transcription', 'review', 'agentName'].map((header) => (
+                            <th 
+                              key={header}
+                              onClick={() => requestSort(header)}
+                              className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-700 transition-colors"
+                            >
+                              <div className="flex items-center space-x-1">
+                                <span>{header.charAt(0).toUpperCase() + header.slice(1)}</span>
+                                {sortConfig.key === header && (
+                                  <span className="material-symbols-outlined text-sm">
+                                    {sortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                                  </span>
+                                )}
+                              </div>
+                            </th>
+                          ))}
+                          <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-gray-900 divide-y divide-gray-800">
+                        {sortedData.map((row, rowIndex) => (
+                          <React.Fragment key={rowIndex}>
+                            <tr className="hover:bg-gray-800 transition-colors duration-200">
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
+                                <input
+                                  type="text"
+                                  value={row.name}
+                                  onChange={(e) => handleCellChange(rowIndex, 'name', e.target.value)}
+                                  className="bg-gray-800 border border-gray-700 rounded-md p-2 text-white w-full focus:outline-none focus:border-purple-500"
+                                />
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                <input
+                                  type="text"
+                                  value={row.campaign}
+                                  onChange={(e) => handleCellChange(rowIndex, 'campaign', e.target.value)}
+                                  className="bg-gray-800 border border-gray-700 rounded-md p-2 text-white w-full focus:outline-none focus:border-purple-500"
+                                />
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                <input
+                                  type="text"
+                                  value={row.serial}
+                                  onChange={(e) => handleCellChange(rowIndex, 'serial', e.target.value)}
+                                  className="bg-gray-800 border border-gray-700 rounded-md p-2 text-white w-full focus:outline-none focus:border-purple-500"
+                                />
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                <input
+                                  type="date"
+                                  value={row.date}
+                                  onChange={(e) => handleCellChange(rowIndex, 'date', e.target.value)}
+                                  className="bg-gray-800 border border-gray-700 rounded-md p-2 text-white w-full focus:outline-none focus:border-purple-500"
+                                />
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                <input
+                                  type="text"
+                                  value={row.recording}
+                                  onChange={(e) => handleCellChange(rowIndex, 'recording', e.target.value)}
+                                  className="bg-gray-800 border border-gray-700 rounded-md p-2 text-white w-full focus:outline-none focus:border-purple-500"
+                                />
+                              </td>
+                              <td className="px-6 py-4 text-sm text-gray-300">
+                                {expandedRows[rowIndex] ? row.transcription : `${row.transcription.substring(0, 100)}...`}
+                                {row.transcription.length > 100 && (
+                                  <button 
+                                    onClick={() => toggleExpand(rowIndex)} 
+                                    className="text-purple-400 hover:text-purple-300 ml-2 text-xs font-medium"
+                                  >
+                                    {expandedRows[rowIndex] ? 'Show Less' : 'Read More'}
+                                  </button>
+                                )}
+                              </td>
+                              <td className="px-6 py-4 text-sm text-gray-300">
+                                {expandedRows[rowIndex] ? row.review : `${row.review.substring(0, 100)}...`}
+                                {row.review.length > 100 && (
+                                  <button 
+                                    onClick={() => toggleExpand(rowIndex)} 
+                                    className="text-purple-400 hover:text-purple-300 ml-2 text-xs font-medium"
+                                  >
+                                    {expandedRows[rowIndex] ? 'Show Less' : 'Read More'}
+                                  </button>
+                                )}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                <input
+                                  type="text"
+                                  value={row.agentName}
+                                  onChange={(e) => handleCellChange(rowIndex, 'agentName', e.target.value)}
+                                  className="bg-gray-800 border border-gray-700 rounded-md p-2 text-white w-full focus:outline-none focus:border-purple-500"
+                                />
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                <div className="flex items-center space-x-2">
+                                  <button
+                                    onClick={() => handleReview(rowIndex)}
+                                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors duration-300 shadow-md
+                                             flex items-center justify-center
+                                             disabled:opacity-50 disabled:cursor-not-allowed"
+                                    disabled={loadingRows[rowIndex]}
+                                  >
+                                    {loadingRows[rowIndex] ? (
+                                      <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                      </svg>
+                                    ) : (
+                                      'Review'
+                                    )}
+                                  </button>
+                                  <button
+                                    onClick={() => handleDelete(rowIndex)}
+                                    className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors duration-300"
+                                  >
+                                    <span className="material-symbols-outlined">delete</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          </React.Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                    {sortedData.length === 0 && (
+                      <div className="text-center py-8 text-gray-400">
+                        No records found. Try adjusting your search or import some data.
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="p-6">
+                  <div className="space-y-4">
+                    {historyData.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-colors duration-200"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <h3 className="text-lg font-medium">{entry.name}</h3>
+                            <p className="text-sm text-gray-400">
+                              {new Date(entry.timestamp).toLocaleString()}
+                            </p>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => loadHistoryEntry(entry)}
+                              className="px-4 py-2 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors duration-300"
+                            >
+                              <span className="material-symbols-outlined mr-2">restore</span>
+                              Load
+                            </button>
+                            <button
+                              onClick={() => deleteHistoryEntry(entry.id)}
+                              className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors duration-300"
+                            >
+                              <span className="material-symbols-outlined">delete</span>
+                            </button>
+                          </div>
+                        </div>
+                        <div className="text-sm text-gray-400">
+                          {entry.data.length} records
+                        </div>
+                      </div>
+                    ))}
+                    {historyData.length === 0 && (
+                      <div className="text-center py-8 text-gray-400">
+                        No history entries found. Save your current reviews to create a history entry.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // --- App Component ---
+    function App() {
+      const [currentUser, setCurrentUser] = useState(null); // Changed to null by default
+      const [userData, setUserData] = useState(null);
+      const [currentView, setCurrentView] = useState('dashboard');
+
+      // Function to handle adding a review and updating user data
+      const handleReviewAdded = (username, review) => {
+        const updatedUserData = addReview(username, review);
+        setUserData(updatedUserData);
+      };
+
+      // Function to handle data import and update user data
+      const handleDataImported = (username, importedData) => {
+        const currentData = getUserData(username);
+        const updatedData = { ...currentData, reviews: importedData };
+        const finalUserData = updateUserData(username, updatedData);
+        setUserData(finalUserData);
+      };
+
+      const handleLogin = (username) => {
+        setCurrentUser(username);
+        setUserData(getUserData(username));
+      };
+
+      const handleLogout = () => {
+        setLocalStorageItem('currentUser', null);
+        setCurrentUser(null);
+        setUserData(null);
+      };
+
+      useEffect(() => {
+        if (currentUser && !userData) {
+          setUserData(getUserData(currentUser));
+        }
+      }, [currentUser, userData]);
+
+      return (
+        <div className="min-h-screen bg-black text-white">
+          {currentUser ? (
+            <>
+              {currentView === 'dashboard' && userData ? (
+                <DashboardComponent 
+                  currentUser={currentUser} 
+                  userData={userData} 
+                  onLogout={handleLogout}
+                  currentView={currentView}
+                  setCurrentView={setCurrentView}
+                />
+              ) : currentView === 'table' && userData ? (
+                <TableComponent 
+                  currentUser={currentUser} 
+                  userData={userData} 
+                  onLogout={handleLogout} 
+                  onReviewAdded={handleReviewAdded} 
+                  onDataImported={handleDataImported}
+                  currentView={currentView}
+                  setCurrentView={setCurrentView}
+                />
+              ) : (
+                <div className="text-center py-10 text-gray-400">Loading...</div>
+              )}
+            </>
+          ) : (
+            <LoginScreen onLogin={handleLogin} />
+          )}
+        </div>
+      );
+    }
+
+    // Create root and render
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
